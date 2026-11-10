@@ -1,40 +1,146 @@
 # WewaSense
 
-Tank water and season planning dashboard for agrarian officers in Anuradhapura district, Sri Lanka.
+WewaSense helps agrarian officers in Anuradhapura, Sri Lanka, plan each paddy season.
 
-Dry-zone farmers grow paddy with water from village tanks (wewa). Before each season, farmer organizations agree at the kanna meeting how much land to cultivate. WewaSense forecasts each tank's water level at mid-season and turns it into a planting plan that officers review, approve and send to farmer organizations by SMS or WhatsApp.
+It shows how much water each village tank (wewa) has now, forecasts how much it will have in the middle of the season, and turns that forecast into a planting plan. Officers review the plan and send it to farmer organizations by SMS or WhatsApp.
 
-- **Maha** runs October to March. **Yala** runs April to September.
-- **Current kanna** is the season being planned now. **Future kanna** is the next one.
-- Officers use the dashboard. Farmer organizations never log in. They receive messages and reply `1` (planted), `2` (not planted) or `3` (crop failed).
+- **Maha** season: October to March. The forecast is for **January**.
+- **Yala** season: April to September. The forecast is for **July**.
 
-> The supplied model files provide tank locations, normals and trained models. Forecasts require observed fill and rainfall values entered on the tank details page. Those forecasts are not saved to the map or used in bulk plans. The optional demo seed still generates mock readings and monitoring data.
+---
+
+## Architecture
+
+```
+ model_files/water_clean.csv ──► load_water.py ──────────┐
+                                                         ▼
+ model_files/tanks.csv ─────────► backend start ──► SQLite database (wewasense.db)
+                                                         ▲
+ model_files/rain_features.csv ─┐                        │
+ model_files/*.joblib ──────────┴► compute_forecasts.py ─┘
+                                                         │
+                                                         ▼
+                                              FastAPI backend (port 8000)
+                                                         │
+                                         ┌───────────────┴───────────────┐
+                                         ▼                               ▼
+                               React dashboard (port 5173)     SMS (Twilio) / WhatsApp (Meta)
+```
+
+1. **Data** comes from satellite water levels (Sentinel-1) and rainfall (GPM).
+2. **The model** (LightGBM) uses the water level at planting and the rain before planting to forecast the mid-season water level.
+3. **The backend** stores everything in SQLite and serves it as a JSON API.
+4. **The dashboard** shows maps, plans, messages and data health.
+5. **Messages** go to farmer organizations through Twilio (SMS) or the WhatsApp Cloud API.
 
 ## Tech stack
 
 | Part | Tools |
 | --- | --- |
-| Frontend | React 18 (Vite), Tailwind CSS, react-leaflet, Recharts, Framer Motion, React Router, lucide-react, react-hot-toast |
-| Backend | Python FastAPI, SQLAlchemy, SQLite |
-| Messaging | `MockProvider` (default), `TwilioSmsProvider`, `WhatsAppCloudProvider` |
+| Backend | Python, FastAPI, SQLAlchemy, SQLite, pandas, LightGBM |
+| Frontend | React (Vite), Tailwind CSS, Leaflet map, Recharts |
+| Messaging | Twilio SMS, Meta WhatsApp Cloud API |
 
-## Run it
+---
 
-You need Python 3.10+ and Node 18+.
+## Folder structure
 
-### Backend
+```
+wewasense/
+├── backend/
+│   ├── main.py                  Starts the API and loads tanks on first run
+│   ├── config.py                Settings and .env loading
+│   ├── database.py              Database connection
+│   ├── models.py                Database tables
+│   ├── seasons.py               Maha and Yala season dates
+│   ├── prediction_service.py    Loads the model and makes forecasts
+│   ├── plan_service.py          Turns a forecast into a planting plan
+│   ├── data_health_service.py   Data freshness, drift and model accuracy
+│   ├── load_water.py            Loads water readings into the database
+│   ├── compute_forecasts.py     Computes and saves forecasts for every tank
+│   ├── routes/
+│   │   ├── tanks.py             Tanks, map, summary, tank details
+│   │   ├── organizations.py     Farmer organizations and contacts
+│   │   ├── plans.py             Season plans
+│   │   ├── messages.py          Sent messages, replies, webhooks
+│   │   └── drift.py             Data health and drift
+│   ├── messaging/
+│   │   ├── providers.py         Twilio and WhatsApp sending
+│   │   └── templates.py         Message text in English, Sinhala and Tamil
+│   ├── model_files/             Data and trained models (see below)
+│   ├── requirements.txt
+│   └── .env.example             Template for API keys
+└── frontend/
+    ├── src/pages/               One file per dashboard page
+    ├── src/components/          Shared parts (map, charts, badges, phone preview)
+    ├── src/api/                 Calls to the backend
+    └── package.json
+```
+
+### Data files (`backend/model_files/`)
+
+| File | What it contains |
+| --- | --- |
+| `tanks.csv` | Every tank: ID, area (ha), location, size class |
+| `water_clean.csv` | Water level (% full) for each tank, about every 12 days, from 2016 |
+| `rain_features.csv` | Rain in the 30 and 60 days before planting, per tank and season |
+| `tank_profiles.csv` | Tank details the model needs (tanks of 5 ha or more) |
+| `tank_normals_train.csv` | Normal water level for each tank and month |
+| `wewasense_model_v1.joblib` | Pre-season forecast model |
+| `wewasense_update_model_v1.joblib` | Mid-season update model |
+
+The model was trained on seasons up to **Maha 2022** (data until 31 January 2023). Later seasons are used to check its accuracy.
+
+### Database tables
+
+| Table | What it stores |
+| --- | --- |
+| `tanks` | Tank list |
+| `water_readings` | Water level history |
+| `tank_forecasts` | Saved forecasts per season and tank |
+| `farmer_organizations` | Farmer organizations and their tank |
+| `contacts` | People who receive messages, with language and channel |
+| `season_plans` | Planting plans and their status |
+| `messages` | Sent messages and received replies |
+
+---
+
+## Setup
+
+You need **Python 3.10+** and **Node 18+**.
+
+### 1. Backend
 
 ```bash
 cd backend
 python -m pip install -r requirements.txt
+cp .env.example .env
 python -m uvicorn main:app --reload
 ```
 
-The API runs on http://localhost:8000 and the interactive docs are at http://localhost:8000/docs.
+On the first start, the backend creates the database and loads all tanks from `tanks.csv`. Stop it with `Ctrl+C` after it starts.
 
-On first start, the backend imports tank locations from `backend/model_files/tanks.csv` into an empty database without deleting existing records. If you previously ran the demo seed, its tanks and readings remain in your database; back up that database before replacing it. `python seed.py` is optional and destructive: it resets the database and generates demo data.
+### 2. Load data and forecasts
 
-### Frontend
+Run these from the `backend` folder:
+
+```bash
+python load_water.py          # loads water levels into the database
+python compute_forecasts.py   # computes forecasts for every tank
+```
+
+Run both again whenever `water_clean.csv` or `rain_features.csv` is updated.
+
+### 3. Start the backend
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+- API: http://localhost:8000
+- API docs: http://localhost:8000/docs
+
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -42,141 +148,121 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The Vite dev server forwards `/api/*` to the backend on port 8000. To point at a different backend, set `VITE_BACKEND_URL` for the dev proxy, or `VITE_API_URL` to call an API URL directly.
+Open **http://localhost:5173**.
 
-Everything works with no API keys: messages go through `MockProvider`, which marks them sent after a short delay.
+The frontend sends requests to `/api/...`, and Vite forwards them to the backend on port 8000. To use another backend address, set `VITE_BACKEND_URL`.
 
-## Pages
+### 5. Messaging keys (optional)
 
-| Page | Path | What it does |
-| --- | --- | --- |
-| Tank Map | `/` | Full-screen map of all tanks. Circles are sized by area and coloured by risk (green LOW, amber MEDIUM, red HIGH). Large reservoirs have grey dashed outlines. Hover for a tooltip, click for a side panel. Top bar has the season selector, a current/forecast toggle, search and a risk filter. Summary cards with animated counters can also filter by risk. |
-| Tank Details | `/tanks/:tankId` | Header with Google Maps link, fill history chart with the normal range shaded and a date-range selector, forecast card, animated prediction flow, planting plan card and linked organizations. |
-| Register Organization | `/organizations/new` | Five-step wizard: organization, tank (map or search, with an optional local name), paddy area, contacts with consent, review. Shows a confirmation animation on success. Also used for editing (`/organizations/:id/edit`). |
-| Organizations | `/organizations` | List of all organizations with search, edit and delete. |
-| Season Plans and Alerts | `/plans` | Generate draft plans for a season, preview each message in a phone mockup (SMS or WhatsApp style) in the contact's language, edit the text, approve, send. Status updates live: draft → approved → sending → sent or failed. |
-| Messages and Replies | `/messages` | Inbox of replies matched to organizations, with counts of planted / not planted / crop failed. "Simulate reply" creates a demo reply. |
-| Data Health and Drift | `/data-health` | Freshness of Sentinel-1, Sentinel-2, CHIRPS, ERA5, ENSO and IOD, satellite coverage, feature drift (PSI table, bar chart and trend), forecast vs actual over past seasons, and the model version. |
+Open `backend/.env` and fill in the keys you have:
 
-### Screenshot list
-
-Screenshots to capture for documentation or a demo:
-
-1. **Tank Map**: default view, Current kanna, Forecast mid-season level.
-2. **Tank Map, tooltip**: hovering a tank.
-3. **Tank Map, side panel**: a tank selected.
-4. **Tank Map, Future kanna**: season switched to Yala, showing the colour change.
-5. **Tank Details**: history chart, forecast card and prediction flow.
-6. **Tank Details, lower half**: planting plan and the empty state "No organizations registered for this tank yet".
-7. **Register Organization, step 2**: tank picked on the small map.
-8. **Register Organization, step 4**: contacts with consent checkbox.
-9. **Register Organization, success**: confirmation animation.
-10. **Organizations list**.
-11. **Season Plans**: table after "Generate plans".
-12. **Season Plans, preview**: WhatsApp-style phone mockup with editable text.
-13. **Season Plans, sent**: status changed to sent after "Approve and send".
-14. **Messages and Replies**: inbox after a few simulated replies.
-15. **Data Health**: freshness cards and coverage charts.
-16. **Data Health, drift and performance**: PSI chart, table and forecast vs actual chart.
-
-## How forecasts and plans work
-
-### Prediction service (`backend/prediction_service.py`)
-
-On a tank details page, select the pre-season or update model and enter measured planting fill and rainfall values. The update model also requires update fill and rainfall after planting. The model uses the supplied tank profiles and monthly normals. A tank without a matching profile or normals cannot be forecast. Model confidence is not supplied by these model files.
-
-### Planting plan (`backend/plan_service.py`)
-
-- Capacity (m³) = area_ha × 10,000 × 1.5 (mock depth)
-- Usable water = capacity × forecast fill %
-- Safe paddy area = usable water ÷ water needed per hectare (10,000 m³, set in `config.py` or with `WATER_NEEDED_PER_HECTARE_M3`), capped at the organization's paddy area
-- Percent to cultivate = safe area ÷ paddy area
-- Below 70%: "Paddy near the tank only, outer fields to green gram or cowpea"
-- Below 50%: bethma is also recommended
-
-## Data availability
-
-The CSV files do not include live rainfall or water observations. Individual forecasts are calculated from user-entered observations and are not persisted; the map and bulk plan generation therefore do not show or use these results. The optional demo seed supplies simulated water history, data health and messaging data. Live ingestion and stored forecast inputs are needed for automatic map forecasts and season plans.
-
-## Messaging
-
-Providers live in `backend/messaging/providers.py`. Each has `send_message(phone, text, channel)` and returns a status and a provider message ID.
-
-| Provider | Used when |
+| Key | Used for |
 | --- | --- |
-| `MockProvider` | Default. Marks the message sent after `MOCK_SEND_DELAY_SECONDS` (3 s). Phone numbers ending in `0000` fail, so you can demo the failed state. |
-| `TwilioSmsProvider` | Contact channel is SMS and the Twilio keys are set. |
-| `WhatsAppCloudProvider` | Contact channel is WhatsApp and the WhatsApp Cloud API keys are set. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Sending SMS |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Sending WhatsApp messages |
+| `WHATSAPP_VERIFY_TOKEN` | Connecting the WhatsApp webhook |
 
-Copy `backend/.env.example` to `backend/.env` and fill in the keys you have. Missing keys fall back to `MockProvider`.
+Without keys for a channel, messages on that channel are not sent and are marked as **failed** in the dashboard.
 
-Rules:
+Never commit `.env`. It is already in `.gitignore`.
 
-- Plans are created as drafts. A plan can only be sent after an officer approves it. The API refuses to send a draft.
-- Only contacts who gave consent (`opted_in`) receive messages.
-- Message templates are in `backend/messaging/templates.py`. The English template is used as written. **Sinhala and Tamil are placeholder translations marked `[REVIEW TRANSLATION]` and need review by a native speaker before field use.**
-- If an officer edits the text, contacts with the same language as the plan receive the edited text. Contacts with another language receive the generated text in their language.
+---
 
-### Inbound replies
+## Dashboard pages
 
-- `POST /webhooks/sms` accepts Twilio form posts (`From`, `Body`) or JSON (`from`, `text`).
-- `POST /webhooks/whatsapp` accepts Meta WhatsApp Cloud webhook payloads. `GET /webhooks/whatsapp` answers Meta's verification challenge using `WHATSAPP_VERIFY_TOKEN`.
-
-Replies are matched to a contact by phone number, linked to the organization's latest plan, and parsed for `1`, `2` or `3`.
-
-Example:
-
-```bash
-curl -X POST http://localhost:8000/webhooks/sms -d "From=+94771234567" -d "Body=1"
-```
-
-## API
-
-| Method | Path | Purpose |
+| Page | Address | What you can do |
 | --- | --- | --- |
-| GET | `/meta` | Model version, mock flag, messaging providers, seasons |
-| GET | `/tanks?season=current\|future&view=current\|forecast` | All tanks with fill, normal, forecast and risk |
-| GET | `/tanks/{tank_id}?season=` | Tank details, forecast, signals, plan, organizations |
-| GET | `/tanks/{tank_id}/history?start=&end=` | Water readings |
-| GET | `/summary?season=&view=` | Counts by risk and average fill |
-| GET, POST | `/organizations` | List (optional `tank_id`) or create |
-| GET, PUT, DELETE | `/organizations/{id}` | Read, update or delete |
-| POST | `/plans/generate?season=` | Create draft plans for all organizations |
-| GET | `/plans?season=` | List plans |
-| PUT | `/plans/{id}` | Edit message text |
-| POST | `/plans/{id}/approve` | Approve |
-| POST | `/plans/{id}/send` | Send an approved plan |
-| POST | `/plans/send-approved?season=` | Send all approved plans |
-| GET | `/messages?direction=` | Messages and reply counts |
-| POST | `/messages/simulate-reply` | Create a demo reply |
-| POST | `/webhooks/sms`, `/webhooks/whatsapp` | Inbound replies |
-| GET | `/drift`, `/data-health`, `/model-performance` | Data health and model monitoring |
+| **Tank Map** | `/` | See all tanks on a map. Switch between **Water now** and **Forecast** (January for Maha, July for Yala). Colours show risk: green LOW, amber MEDIUM, red HIGH, grey no forecast. Search tanks and filter by risk. Click a tank for details. |
+| **Tank Details** | `/tanks/:tankId` | Water level history, forecast, model inputs, planting plan and linked organizations. You can also enter values by hand to run the model. |
+| **Register Organization** | `/organizations/new` | Add a farmer organization step by step: name, tank, paddy area, contacts. |
+| **Organizations** | `/organizations` | View, edit and delete organizations. |
+| **Season Plans** | `/plans` | Generate plans, preview the message, edit, approve, send, resend and delete plans. |
+| **Messages** | `/messages` | See sent messages and farmer replies. Resend a message. |
+| **Data Health** | `/data-health` | Latest dates for water and rain data, satellite coverage, drift of model inputs, and model accuracy on past seasons. |
 
-## Project structure
+### Risk levels
 
-```
-backend/
-  main.py                FastAPI app and routers
-  config.py              Settings, thresholds and .env loading
-  database.py            SQLAlchemy engine and session
-  models.py              Database tables
-  seasons.py             Maha/Yala season dates
-  seed.py                Mock data generator (python seed.py)
-  mock_places.py         Mock village and name lists
-  prediction_service.py  get_forecast (swap for the real model)
-  plan_service.py        Planting plan rules
-  routes/                tanks, organizations, plans, messages, drift
-  messaging/             providers.py, templates.py
-  requirements.txt
-  .env.example
-frontend/
-  src/pages/             TankMap, TankDetails, RegisterOrganization, Organizations, SeasonPlans, Messages, DataHealth
-  src/components/        Shared UI (map markers, charts, badges, phone mockup, wizard parts)
-  src/api/               API client and data hook
-```
+The forecast is compared with the tank's normal level for that month:
 
-The repository root is the `wewasense-app/` folder from the original specification.
+| Risk | Meaning |
+| --- | --- |
+| HIGH | Forecast is below 80% of normal |
+| MEDIUM | Forecast is between 80% and 95% of normal |
+| LOW | Forecast is 95% of normal or more |
 
-## Database tables
+Tanks under 5 ha are shown as **Too small to forecast**. A season shows **No forecast yet** until the water level and rain at planting are available.
 
-`tanks`, `water_readings`, `farmer_organizations`, `contacts`, `season_plans`, `messages`, `drift_snapshots`, plus two tables that hold mock monitoring values: `data_sources` (freshness) and `model_performance` (forecast vs actual per past season). `messages` also stores `from_phone` and `reply_code` for inbound replies, and `season_plans` stores `safe_area_ha` and `message_language`.
+---
+
+## How a plan is made
+
+1. The forecast gives the expected water level in the middle of the season.
+2. Usable water = tank area × 1.5 m depth × forecast % full.
+3. Safe paddy area = usable water ÷ 10,000 m³ per hectare, up to the organization's paddy area.
+4. Advice:
+   - 70% of the area or more: full paddy cultivation.
+   - Below 70%: paddy near the tank only, other crops (green gram, cowpea) in outer fields.
+   - Below 50%: bethma (sharing a smaller area near the tank) is also recommended.
+
+Plans are created as **drafts**. An officer must **approve** a plan before it can be sent. Only contacts who agreed to receive messages get them.
+
+Messages are written in the contact's language (English, Sinhala or Tamil). The Sinhala and Tamil text should be checked by a native speaker before real use.
+
+---
+
+## Backend API
+
+All paths are on `http://localhost:8000`. Full details are at `/docs`.
+
+### Tanks and seasons
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/seasons` | Current and next season |
+| GET | `/tanks?season=current&view=forecast` | All tanks with water level, forecast and risk |
+| GET | `/summary?season=current&view=forecast` | Number of tanks per risk level |
+| GET | `/tanks/{tank_id}?season=current` | One tank with forecast, inputs and plan |
+| GET | `/tanks/{tank_id}/history?start=&end=` | Water level history |
+| POST | `/tanks/{tank_id}/forecast` | Run the model with values you enter |
+
+`season` is `current` or `future`. `view` is `current` (water now) or `forecast`.
+
+### Organizations
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/organizations` | List organizations |
+| POST | `/organizations` | Add an organization |
+| GET | `/organizations/{id}` | One organization |
+| PUT | `/organizations/{id}` | Update an organization |
+| DELETE | `/organizations/{id}` | Delete an organization |
+
+### Season plans
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| POST | `/plans/generate?season=current` | Create draft plans for all organizations |
+| GET | `/plans?season=current` | List plans |
+| PUT | `/plans/{id}` | Edit the message text |
+| POST | `/plans/{id}/approve` | Approve a plan |
+| POST | `/plans/{id}/send` | Send or resend a plan |
+| POST | `/plans/send-approved?season=current` | Send all approved plans |
+| DELETE | `/plans/{id}` | Delete a plan (sent messages are kept) |
+
+### Messages
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/messages?direction=inbound` | List messages (`inbound` or `outbound`) |
+| POST | `/messages/{id}/resend` | Send a message again |
+| DELETE | `/messages/{id}` | Delete a sent message |
+| POST | `/webhooks/sms` | Receive SMS replies from Twilio |
+| GET, POST | `/webhooks/whatsapp` | Receive WhatsApp replies from Meta |
+
+### Data health
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/data-health` | Latest data dates and satellite coverage |
+| GET | `/drift` | How much the latest model inputs differ from the training data |
+| GET | `/model-performance` | Forecast compared with actual water level for past seasons |

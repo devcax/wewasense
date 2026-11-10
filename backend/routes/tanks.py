@@ -55,7 +55,7 @@ def forecast_from_row(tank, season, row):
         "risk_level": row.risk_level,
         "confidence": "medium",
         "model_version": row.model_version,
-        "forecast_status": "demo" if row.is_demo else "ok",
+        "forecast_status": "ok",
         "forecast_inputs_label": row.input_season_label,
     }
 
@@ -69,7 +69,6 @@ def signals_from_row(row):
         "fill_at_planting_percent": round(row.fill_at_planting, 1),
         "rain_30d_mm": round(row.rain_30d),
         "rain_60d_mm": round(row.rain_60d),
-        "is_demo": row.is_demo,
     }
 
 

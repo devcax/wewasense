@@ -10,7 +10,6 @@ from seasons import resolve_season
 rain_csv_path = "model_files/rain_features.csv"
 search_window_days = 15
 season_keys = ["current", "future"]
-demo_input_seasons = {}
 
 
 def planting_date_for(season_type, year):
@@ -25,12 +24,6 @@ def real_input_label(season_key):
     mid_growth_date = info["mid"]
     year = mid_growth_date.year - 1 if season_type == "Maha" else mid_growth_date.year
     return f"{season_type} {year}"
-
-
-def choose_input_label(season_key):
-    if season_key in demo_input_seasons:
-        return demo_input_seasons[season_key], True
-    return real_input_label(season_key), False
 
 
 def split_label(label):
@@ -58,7 +51,7 @@ def load_rain(label):
 
 
 def build_forecast_rows(season_key, readings):
-    label, is_demo = choose_input_label(season_key)
+    label = real_input_label(season_key)
     season_type, year = split_label(label)
     planting_date = planting_date_for(season_type, year)
     fills = fill_near_date(readings, planting_date)
@@ -75,7 +68,6 @@ def build_forecast_rows(season_key, readings):
             TankForecast(
                 season_key=season_key,
                 input_season_label=label,
-                is_demo=is_demo,
                 tank_id=tank_id,
                 planting_date=planting_date,
                 fill_at_planting=float(fills[tank_id]),
@@ -98,6 +90,7 @@ def save_rows(session, season_key, rows):
 
 
 def main():
+    TankForecast.__table__.drop(engine, checkfirst=True)
     Base.metadata.create_all(engine)
     readings = load_readings()
     session = SessionLocal()

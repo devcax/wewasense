@@ -3,7 +3,7 @@ import { Droplets, MapPin, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ConfidenceBadge, RiskBadge } from "./Badges.jsx";
 import FillGauge from "./FillGauge.jsx";
-import { demoInputsLabel, formatDate, formatNumber, formatPercent, sourceLabel, unavailableForecastLabel } from "./format.js";
+import { formatDate, formatNumber, formatPercent, sourceLabel, unavailableForecastLabel } from "./format.js";
 
 function PanelStat({ label, value }) {
   return (
@@ -31,8 +31,7 @@ function PanelContent({ tank, view, seasonLabel, onClose }) {
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
         <div className="flex items-center justify-between">
-          <div><div className="mb-1 text-xs text-slate-500">{view === "current" ? "Current risk" : "Forecast risk"}</div><RiskBadge level={view === "current" ? tank.current_risk_level : tank.risk_level} emptyLabel={view === "current" ? "Unavailable" : unavailableForecastLabel(tank)} size="lg" />
-            {view === "forecast" && demoInputsLabel(tank) && <div className="mt-1 text-[11px] text-slate-500">{demoInputsLabel(tank)}</div>}</div>
+          <div><div className="mb-1 text-xs text-slate-500">{view === "current" ? "Current risk" : "Forecast risk"}</div><RiskBadge level={view === "current" ? tank.current_risk_level : tank.risk_level} emptyLabel={view === "current" ? "Unavailable" : unavailableForecastLabel(tank)} size="lg" /></div>
           <ConfidenceBadge confidence={tank.confidence} />
         </div>
         <FillGauge

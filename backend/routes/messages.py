@@ -1,31 +1,17 @@
-import random
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import config
 from database import get_db
 from messaging.providers import choose_provider, refresh_plan_status
 from messaging.templates import REPLY_MEANINGS
-from models import Contact, FarmerOrganization, Message, SeasonPlan
+from models import Contact, Message, SeasonPlan
 from routes.tanks import tank_display_name
 
 router = APIRouter(tags=["messages"])
-
-SIMULATED_REPLY_TEXTS = {
-    "1": ["1", "1 - wagaa kala", "1 planted"],
-    "2": ["2", "2 not yet", "2 - wathura madi"],
-    "3": ["3", "3 crop failed", "3 - wagawa nasthi una"],
-}
-
-
-class SimulatedReplyInput(BaseModel):
-    organization_id: int | None = None
-    reply_code: str | None = None
-
 
 def phone_digits(phone):
     return "".join(character for character in phone or "" if character.isdigit())
@@ -116,17 +102,6 @@ def reply_summary(messages):
     return counts
 
 
-def pick_simulation_contact(db, organization_id):
-    query = db.query(Contact).join(FarmerOrganization)
-    if organization_id:
-        query = query.filter(Contact.organization_id == organization_id)
-    contacts = query.all()
-    if not contacts:
-        raise HTTPException(status_code=400, detail="Register an organization with contacts first")
-    contacts_with_plans = [contact for contact in contacts if latest_plan_for_contact(db, contact)]
-    return random.choice(contacts_with_plans or contacts)
-
-
 def twilio_reply_xml():
     return Response(content="<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>", media_type="application/xml")
 
@@ -153,16 +128,6 @@ def list_messages(direction: str | None = Query(None, pattern="^(inbound|outboun
         query = query.filter(Message.direction == direction)
     messages = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(500).all()
     return {"summary": reply_summary(messages), "messages": [message_payload(message) for message in messages]}
-
-
-@router.post("/messages/simulate-reply")
-def simulate_reply(data: SimulatedReplyInput | None = None, db: Session = Depends(get_db)):
-    data = data or SimulatedReplyInput()
-    contact = pick_simulation_contact(db, data.organization_id)
-    reply_code = data.reply_code if data.reply_code in REPLY_MEANINGS else random.choice(list(REPLY_MEANINGS))
-    text = random.choice(SIMULATED_REPLY_TEXTS[reply_code])
-    message = store_inbound_message(db, contact.phone, text, contact.channel, "simulated")
-    return message_payload(message)
 
 
 @router.post("/webhooks/sms")

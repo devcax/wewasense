@@ -1,14 +1,10 @@
 import logging
-import threading
-import uuid
 
 import requests
 
 import config
-from database import SessionLocal
-from models import Message, SeasonPlan
+from models import SeasonPlan
 
-MOCK_FAILING_PHONE_SUFFIX = "0000"
 REQUEST_TIMEOUT_SECONDS = 15
 logger = logging.getLogger("wewasense.messaging")
 
@@ -35,33 +31,12 @@ def refresh_plan_status(session, plan_id):
     plan.status = "failed" if "failed" in statuses else "sent"
 
 
-def finish_mock_delivery(provider_message_id, final_status):
-    session = SessionLocal()
-    try:
-        message = session.query(Message).filter(Message.provider_message_id == provider_message_id).first()
-        if message is None:
-            return
-        message.status = final_status
-        if message.plan_id:
-            session.flush()
-            refresh_plan_status(session, message.plan_id)
-        session.commit()
-    finally:
-        session.close()
-
-
-class MockProvider:
-    name = "mock"
+class NotConfiguredProvider:
+    name = "not_configured"
 
     def send_message(self, phone, text, channel):
-        provider_message_id = f"mock-{uuid.uuid4().hex[:12]}"
-        final_status = "failed" if digits_only(phone).endswith(MOCK_FAILING_PHONE_SUFFIX) else "sent"
-        timer = threading.Timer(
-            config.MOCK_SEND_DELAY_SECONDS, finish_mock_delivery, args=(provider_message_id, final_status)
-        )
-        timer.daemon = True
-        timer.start()
-        return {"status": "queued", "provider_message_id": provider_message_id}
+        logger.warning("No %s keys in .env, message to %s was not sent", channel, phone)
+        return {"status": "failed", "provider_message_id": None}
 
 
 class TwilioSmsProvider:
@@ -115,30 +90,15 @@ def choose_provider(channel):
         return WhatsAppCloudProvider()
     if channel == "sms" and config.has_twilio_keys():
         return TwilioSmsProvider()
-    return MockProvider()
+    return NotConfiguredProvider()
 
 
 def provider_summary():
     return {
-        "sms": "twilio_sms" if config.has_twilio_keys() else "mock",
-        "whatsapp": "whatsapp_cloud" if config.has_whatsapp_keys() else "mock",
+        "sms": "twilio_sms" if config.has_twilio_keys() else "not_configured",
+        "whatsapp": "whatsapp_cloud" if config.has_whatsapp_keys() else "not_configured",
     }
 
 
 def send_message(phone, text, channel):
     return choose_provider(channel).send_message(phone, text, channel)
-
-
-def finish_stale_mock_messages():
-    session = SessionLocal()
-    try:
-        stale_ids = [
-            message.provider_message_id
-            for message in session.query(Message).filter(
-                Message.status == "queued", Message.provider_message_id.like("mock-%")
-            )
-        ]
-    finally:
-        session.close()
-    for provider_message_id in stale_ids:
-        finish_mock_delivery(provider_message_id, "sent")

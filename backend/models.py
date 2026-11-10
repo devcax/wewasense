@@ -117,7 +117,6 @@ class TankForecast(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     season_key: Mapped[str] = mapped_column(String)
     input_season_label: Mapped[str] = mapped_column(String)
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     tank_id: Mapped[str] = mapped_column(ForeignKey("tanks.tank_id"))
     planting_date: Mapped[date] = mapped_column(Date)
     fill_at_planting: Mapped[float] = mapped_column(Float)

@@ -1,8 +1,8 @@
 from config import (
     BETHMA_THRESHOLD,
-    MOCK_TANK_DEPTH_M,
     PADDY_NEAR_TANK_THRESHOLD,
     SQUARE_METRES_PER_HECTARE,
+    TANK_DEPTH_M,
     WATER_NEEDED_PER_HECTARE_M3,
 )
 
@@ -11,7 +11,7 @@ PADDY_NEAR_TANK_ADVICE = "Paddy near the tank only, outer fields to green gram o
 
 
 def tank_capacity_m3(area_ha):
-    return area_ha * SQUARE_METRES_PER_HECTARE * MOCK_TANK_DEPTH_M
+    return area_ha * SQUARE_METRES_PER_HECTARE * TANK_DEPTH_M
 
 
 def usable_water_m3(capacity_m3, forecast_fill_percent):

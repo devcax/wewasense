@@ -52,7 +52,6 @@ export const api = {
   resendMessage: (id) => request(`/messages/${id}/resend`, { method: "POST" }),
   deleteMessage: (id) => request(`/messages/${id}`, { method: "DELETE" }),
   getMessages: (direction) => request(`/messages${queryString({ direction })}`),
-  simulateReply: (data = {}) => request("/messages/simulate-reply", { method: "POST", body: data }),
   getDrift: () => request("/drift"),
   getDataHealth: () => request("/data-health"),
   getModelPerformance: () => request("/model-performance"),

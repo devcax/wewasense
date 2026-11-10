@@ -1,5 +1,5 @@
 import { CircleMarker, Tooltip } from "react-leaflet";
-import { demoInputsLabel, formatDate, formatPercent, unavailableForecastLabel } from "./format.js";
+import { formatDate, formatPercent, unavailableForecastLabel } from "./format.js";
 import { LARGE_RESERVOIR_COLOR, riskColor } from "./riskStyles.js";
 
 export function displayedRisk(tank, view) {
@@ -54,7 +54,6 @@ function TankTooltip({ tank, view }) {
         <TooltipRow label={view === "forecast" ? "Forecast risk" : "Current risk"} value={risk || (view === "forecast" ? unavailableForecastLabel(tank) : "Unavailable")} />
         <TooltipRow label="Last satellite date" value={formatDate(tank.last_reading_date)} />
       </div>
-      {view === "forecast" && demoInputsLabel(tank) && <div className="mt-1 text-[11px] text-slate-500">{demoInputsLabel(tank)}</div>}
     </div>
   );
 }

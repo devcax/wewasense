@@ -5,7 +5,7 @@ import config
 from database import create_tables, SessionLocal
 from models import Tank
 import csv
-from messaging.providers import finish_stale_mock_messages, provider_summary
+from messaging.providers import provider_summary
 from routes import drift, messages, organizations, plans, tanks
 from seasons import season_options
 
@@ -26,7 +26,6 @@ with SessionLocal() as db:
                              center_lat=float(row["center_lat"]), center_lon=float(row["center_lon"]),
                              size_class=row["size_class"], nearest_village="Unknown") for row in csv.DictReader(f)])
         db.commit()
-finish_stale_mock_messages()
 
 app.include_router(tanks.router)
 app.include_router(organizations.router)
@@ -44,7 +43,6 @@ def health():
 def meta():
     return {
         "model_version": config.MODEL_VERSION,
-        "uses_mock_predictions": config.USES_MOCK_PREDICTIONS,
         "messaging_providers": provider_summary(),
         "seasons": season_options(),
     }

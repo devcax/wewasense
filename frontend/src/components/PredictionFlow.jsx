@@ -21,7 +21,7 @@ function buildSteps(tank) {
       lines: [
         `Fill at planting ${formatPercent(signals.fill_at_planting_percent, 1)} · ${formatDate(signals.planting_date)}`,
         `Rain ${signals.rain_30d_mm ?? "–"} mm (30 days) · ${signals.rain_60d_mm ?? "–"} mm (60 days)`,
-        signals.inputs_from_season ? `Inputs from ${signals.inputs_from_season}${signals.is_demo ? " (demo)" : ""}` : "No model inputs for this tank",
+        signals.inputs_from_season ? `Inputs from ${signals.inputs_from_season}` : "No model inputs for this tank",
       ],
     },
     {

@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import date
 from functools import lru_cache
 
 import numpy as np
@@ -92,10 +92,9 @@ def forecast_source(db, today):
     if latest is None:
         return source_payload("Season forecasts", "Stored model forecasts (compute_forecasts.py)", "No forecasts computed", None, season_interval_days, today)
     count = db.query(func.count(TankForecast.id)).filter(TankForecast.season_key == latest.season_key).scalar()
-    demo_note = " (demo inputs)" if latest.is_demo else ""
     return source_payload(
         "Season forecasts", "Stored model forecasts (compute_forecasts.py)",
-        f"{count} tanks using inputs from {latest.input_season_label}{demo_note}",
+        f"{count} tanks using inputs from {latest.input_season_label}",
         latest.created_at.date(), season_interval_days, today,
     )
 

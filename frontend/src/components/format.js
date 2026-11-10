@@ -42,7 +42,3 @@ export const CHANNEL_LABELS = { sms: "SMS", whatsapp: "WhatsApp" };
 export function unavailableForecastLabel(tank) {
   return tank.forecast_status === "too_small" ? "Too small to forecast" : "Unavailable";
 }
-
-export function demoInputsLabel(tank) {
-  return tank.forecast_status === "demo" ? `Demo inputs: ${tank.forecast_inputs_label}` : null;
-}
